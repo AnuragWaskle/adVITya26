@@ -6,7 +6,7 @@ import {
   faPlus, faUsers, faBuilding, faSpinner, faSearch,
   faChevronLeft, faChevronRight,
   faTachometerAlt, faAngleDoubleLeft, faAngleDoubleRight,
-  faTrophy, faCalendarAlt
+  faTrophy, faCalendarAlt, faClipboardCheck, faCheck, faTimes, faEye, faUpload, faImage
 } from '@fortawesome/free-solid-svg-icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { uploadImageFile, transformGoogleDriveUrl } from '@/lib/storage';
 
 const COLORS = ['#CDB7D9', '#9F87C4', '#765BA0', '#4E317D', '#280338'];
 
@@ -27,42 +28,71 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [registrations, setRegistrations] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [pendingReviews, setPendingReviews] = useState([]);
 
+  // Upload States (Processing)
+  const [isSubmittingClub, setIsSubmittingClub] = useState(false);
+  const [isSubmittingEvent, setIsSubmittingEvent] = useState(false);
 
-
+  // Filters
   const [showAddClub, setShowAddClub] = useState(false);
   const [userRoleFilter, setUserRoleFilter] = useState('all');
   const [userClubFilter, setUserClubFilter] = useState('all');
   const [clubCategoryFilter, setClubCategoryFilter] = useState('all');
+  const [eventClubFilter, setEventClubFilter] = useState('all');
 
+  // New Club State
   const [newClub, setNewClub] = useState({
     name: '',
     category: 'technical',
     description: '',
-    logo: ''
+    logoFile: null,      // The actual file object
+    logoPreview: '',     // The local preview URL
+    logoUrl: ''          // The fallback URL text input
   });
+
+  // Event Creation State
+  const [showAddEvent, setShowAddEvent] = useState(false);
+  const [newEvent, setNewEvent] = useState({
+    clubId: '',
+    eventName: '',
+    posterFile: null,
+    posterPreview: '',
+    posterUrl: '',
+    registrationFee: 0,
+    registrationMethod: 'internal',
+    registrationLink: '',
+  });
+  const [formFields, setFormFields] = useState([]);
+
+  // Review Modal State
+  const [selectedReview, setSelectedReview] = useState(null);
 
   const DATABASE_ID = import.meta.env.VITE_APPWRITE_DATABASE_ID;
   const CLUBS_COLLECTION_ID = import.meta.env.VITE_APPWRITE_CLUBS_COLLECTION_ID;
   const USERS_COLLECTION_ID = import.meta.env.VITE_APPWRITE_USERS_COLLECTION_ID;
   const REGISTRATIONS_COLLECTION_ID = import.meta.env.VITE_APPWRITE_REGISTRATIONS_COLLECTION_ID;
   const EVENTS_COLLECTION_ID = import.meta.env.VITE_APPWRITE_EVENTS_COLLECTION_ID;
+  const PENDING_EVENTS_COLLECTION_ID = import.meta.env.VITE_APPWRITE_PENDING_EVENTS_COLLECTION_ID;
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [clubsRes, usersRes, registrationsRes, eventsRes] = await Promise.all([
+      const [clubsRes, usersRes, registrationsRes, eventsRes, pendingRes] = await Promise.all([
         databases.listDocuments(DATABASE_ID, CLUBS_COLLECTION_ID, [Query.limit(100)]),
         databases.listDocuments(DATABASE_ID, USERS_COLLECTION_ID, [Query.limit(100)]),
         databases.listDocuments(DATABASE_ID, REGISTRATIONS_COLLECTION_ID, [Query.limit(1000)]),
-        databases.listDocuments(DATABASE_ID, EVENTS_COLLECTION_ID, [Query.limit(100)])
+        databases.listDocuments(DATABASE_ID, EVENTS_COLLECTION_ID, [Query.limit(100)]),
+        databases.listDocuments(DATABASE_ID, PENDING_EVENTS_COLLECTION_ID, [Query.limit(100)])
       ]);
 
-      const events = eventsRes.documents;
+      const eventsData = eventsRes.documents;
       const allUsers = usersRes.documents;
+      const pendingData = pendingRes.documents;
 
       const clubsData = clubsRes.documents.map(club => {
-        const clubEvents = events.filter(e => e.clubId === club.$id);
+        const clubEvents = eventsData.filter(e => e.clubId === club.$id);
         const coordinator = allUsers.find(u => u.clubName === club.name && u.role === 'coordinator');
         return {
           ...club,
@@ -74,6 +104,9 @@ export default function AdminDashboard() {
       setClubs(clubsData);
       setUsers(allUsers);
       setRegistrations(registrationsRes.documents);
+      setEvents(eventsData);
+      setPendingReviews(pendingData);
+
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
@@ -85,11 +118,35 @@ export default function AdminDashboard() {
     fetchData();
   }, []);
 
+  // --- Upload Helpers (Deferred) ---
+  const handleLogoSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    setNewClub(prev => ({ ...prev, logoFile: file, logoPreview: previewUrl }));
+  };
+
+  const handlePosterSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    setNewEvent(prev => ({ ...prev, posterFile: file, posterPreview: previewUrl }));
+  };
 
 
+  // --- Club Management ---
   const handleAddClub = async (e) => {
     e.preventDefault();
+    setIsSubmittingClub(true);
     try {
+      let finalLogoUrl = newClub.logoUrl;
+
+      if (newClub.logoFile) {
+        finalLogoUrl = await uploadImageFile(newClub.logoFile);
+      }
+
+      console.log("DEBUG: Final Logo URL:", finalLogoUrl);
+
       await databases.createDocument(
         DATABASE_ID,
         CLUBS_COLLECTION_ID,
@@ -98,18 +155,22 @@ export default function AdminDashboard() {
           name: newClub.name,
           category: newClub.category,
           description: newClub.description || '',
+          logo: finalLogoUrl || '',
         }
       );
-      setNewClub({ name: '', category: 'technical', description: '' });
+      setNewClub({ name: '', category: 'technical', description: '', logoFile: null, logoPreview: '', logoUrl: '' });
       setShowAddClub(false);
       alert('Club added successfully!');
       fetchData();
     } catch (error) {
       console.error('Error adding club:', error);
-      alert('Error adding club');
+      alert('Error adding club: ' + error.message);
+    } finally {
+      setIsSubmittingClub(false);
     }
   };
 
+  // --- User Management ---
   const handlePromoteToCoordinator = async (userId, currentRole) => {
     if (currentRole === 'coordinator') return;
     try {
@@ -143,8 +204,120 @@ export default function AdminDashboard() {
     }
   };
 
+  // --- Event Creation Logic ---
+  const addFormField = () => {
+    setFormFields([...formFields, { name: '', label: '', type: 'text', required: false }]);
+  };
+
+  const removeFormField = (index) => {
+    setFormFields(formFields.filter((_, i) => i !== index));
+  };
+
+  const updateFormField = (index, field, value) => {
+    const updated = [...formFields];
+    updated[index][field] = value;
+    if (field === 'label') {
+      updated[index].name = value.toLowerCase().replace(/\s+/g, '_');
+    }
+    setFormFields(updated);
+  };
+
+  const handleCreateEvent = async (e) => {
+    e.preventDefault();
+    if (!newEvent.clubId) {
+      alert("Please select a club");
+      return;
+    }
+    if (newEvent.registrationMethod === 'internal' && formFields.length === 0) {
+      alert('Please add at least one form field for internal registration');
+      return;
+    }
+
+    setIsSubmittingEvent(true);
+    try {
+      let finalPosterUrl = newEvent.posterUrl;
+
+      if (newEvent.posterFile) {
+        finalPosterUrl = await uploadImageFile(newEvent.posterFile);
+      }
+
+      await databases.createDocument(
+        DATABASE_ID,
+        EVENTS_COLLECTION_ID,
+        ID.unique(),
+        {
+          clubId: newEvent.clubId,
+          name: newEvent.eventName,
+          poster: finalPosterUrl,
+          registrationFee: Number(newEvent.registrationFee),
+          registrationMethod: newEvent.registrationMethod,
+          registrationLink: newEvent.registrationMethod === 'external' ? newEvent.registrationLink : null,
+          formFields: newEvent.registrationMethod === 'internal' ? JSON.stringify(formFields) : null,
+        }
+      );
+      alert('Event created successfully!');
+      setShowAddEvent(false);
+      setNewEvent({
+        clubId: '', eventName: '', posterFile: null, posterPreview: '', posterUrl: '', registrationFee: 0,
+        registrationMethod: 'internal', registrationLink: ''
+      });
+      setFormFields([]);
+      fetchData();
+    } catch (error) {
+      console.error("Error creating event:", error);
+      alert("Error creating event: " + error.message);
+    } finally {
+      setIsSubmittingEvent(false);
+    }
+  };
+
+  // --- Review Logic ---
+  const handleApproveReview = async (review) => {
+    try {
+      const changes = JSON.parse(review.proposedChanges);
+
+      // Update the actual event
+      await databases.updateDocument(
+        DATABASE_ID,
+        EVENTS_COLLECTION_ID,
+        review.originalEventId,
+        {
+          name: changes.name,
+          poster: changes.poster,
+          registrationFee: changes.registrationFee,
+          registrationMethod: changes.registrationMethod,
+          registrationLink: changes.registrationLink,
+          formFields: changes.formFields
+        }
+      );
+
+      // Delete the pending review
+      await databases.deleteDocument(DATABASE_ID, PENDING_EVENTS_COLLECTION_ID, review.$id);
+
+      alert("Changes approved and applied!");
+      setSelectedReview(null);
+      fetchData();
+    } catch (error) {
+      console.error("Error approving review:", error);
+      alert("Error approving changes");
+    }
+  };
+
+  const handleRejectReview = async (reviewId) => {
+    if (!confirm("Are you sure you want to reject and delete this request?")) return;
+    try {
+      await databases.deleteDocument(DATABASE_ID, PENDING_EVENTS_COLLECTION_ID, reviewId);
+      alert("Request rejected.");
+      setSelectedReview(null);
+      fetchData();
+    } catch (error) {
+      console.error("Error rejecting review:", error);
+      alert("Error rejecting request");
+    }
+  };
 
 
+  // --- Helper Functions ---
   const getTopClubsData = () => {
     const data = clubs.map(club => {
       const count = registrations.filter(r => r.clubId === club.$id || r.clubId === club.name).length;
@@ -166,9 +339,7 @@ export default function AdminDashboard() {
     }));
   };
 
-
-
-
+  // Filtering
   const filteredUsers = users.filter(user => {
     const matchesSearch = (user.name?.toLowerCase().includes(userSearchTerm.toLowerCase()) || '') ||
       (user.email?.toLowerCase().includes(userSearchTerm.toLowerCase()) || '');
@@ -176,6 +347,14 @@ export default function AdminDashboard() {
     const matchesClub = userClubFilter === 'all' || user.clubName === userClubFilter;
     return matchesSearch && matchesRole && matchesClub;
   });
+
+  const filteredEvents = events.filter(event => {
+    if (eventClubFilter === 'all') return true;
+    // Find club name for this event
+    const club = clubs.find(c => c.$id === event.clubId);
+    return club?.name === eventClubFilter;
+  });
+
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -207,7 +386,6 @@ export default function AdminDashboard() {
         className="absolute inset-0 flex z-0 pointer-events-none"
       >
         <img src="/Herosection_BG.svg" alt="BG" className="w-full h-full object-cover opacity-20" />
-        <img src="/Herosection_BG.svg" alt="BG" className="w-full h-full object-cover opacity-20" />
       </motion.div>
 
       <motion.div
@@ -237,38 +415,46 @@ export default function AdminDashboard() {
         <nav className="flex-1 py-8 flex flex-col gap-2 px-3">
           {[
             { id: 'overview', label: 'Overview', icon: faTachometerAlt },
+            { id: 'reviews', label: 'Reviews', icon: faClipboardCheck },
+            { id: 'events', label: 'Events', icon: faCalendarAlt },
             { id: 'clubs', label: 'Clubs', icon: faBuilding },
             { id: 'users', label: 'Users', icon: faUsers },
             { id: 'registrations', label: 'Registrations', icon: faSearch },
           ].map(item => (
             <button
               key={item.id}
-              onClick={() => { setActiveTab(item.id); setShowAddClub(false); }}
+              onClick={() => { setActiveTab(item.id); setShowAddClub(false); setShowAddEvent(false); }}
               className={`flex items-center px-4 py-3.5 rounded-xl transition-all duration-300 font-medium group cursor-pointer ${activeTab === item.id
                 ? 'bg-gradient-to-r from-[#CDB7D9]/20 to-transparent text-[#CDB7D9]'
                 : 'text-[#CDB7D9]/50 hover:text-[#CDB7D9] hover:bg-[#CDB7D9]/5'
                 }`}
             >
-              <FontAwesomeIcon icon={item.icon} className={`text-lg transition-transform group-hover:scale-110 ${isSidebarOpen ? 'mr-4' : 'mx-auto'}`} />
+              <div className="w-6 flex justify-center">
+                <FontAwesomeIcon icon={item.icon} className={`text-lg transition-transform group-hover:scale-110`} />
+              </div>
               <AnimatePresence>
                 {isSidebarOpen && (
-                  <motion.span initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="whitespace-nowrap overflow-hidden">
+                  <motion.span initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="ml-4 whitespace-nowrap overflow-hidden">
                     {item.label}
                   </motion.span>
                 )}
               </AnimatePresence>
+              {item.id === 'reviews' && pendingReviews.length > 0 && isSidebarOpen && (
+                <span className="ml-auto bg-pink-500 text-[10px] text-white font-bold px-2 py-0.5 rounded-full">{pendingReviews.length}</span>
+              )}
             </button>
           ))}
         </nav>
       </motion.div>
 
-      <div className="flex-1 pt-8 flex flex-col  h-screen overflow-hidden z-10 relative">
+      <div className="flex-1 pt-8 flex flex-col h-screen overflow-hidden z-10 relative">
         <header className="h-24 flex items-end px-10 justify-between z-20 sticky top-0">
           <div>
             <h2 className="text-4xl font-abril text-white tracking-wide">
               {activeTab === 'overview' ? 'Overview' :
                 activeTab === 'clubs' ? (showAddClub ? 'New Club' : 'Clubs') :
-                  activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+                  activeTab === 'events' ? (showAddEvent ? 'Create Event' : 'Events') :
+                    activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
             </h2>
             <p className="text-[#CDB7D9]/50 text-sm mt-1 font-medium">Welcome back, {user?.name || 'Admin'}</p>
           </div>
@@ -284,36 +470,35 @@ export default function AdminDashboard() {
                 transition={{ duration: 0.4 }}
                 className="space-y-12"
               >
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                   {[
                     { label: 'Total Registrations', value: registrations.length, icon: faUsers, color: 'text-pink-400' },
                     { label: 'Active Clubs', value: clubs.length, icon: faBuilding, color: 'text-purple-400' },
-                    { label: 'Total Events', value: clubs.reduce((acc, c) => acc + (c.events?.length || 0), 0), icon: faCalendarAlt, color: 'text-indigo-400' },
+                    { label: 'Total Events', value: events.length, icon: faCalendarAlt, color: 'text-indigo-400' },
+                    { label: 'Pending Reviews', value: pendingReviews.length, icon: faClipboardCheck, color: 'text-yellow-400' },
                   ].map((stat, idx) => (
                     <div key={idx} className="relative group">
                       <div className="absolute inset-0 bg-gradient-to-r from-[#CDB7D9]/5 to-transparent rounded-3xl blur-xl group-hover:opacity-100 opacity-50 transition-opacity"></div>
                       <div className="relative flex items-center gap-6 p-4">
-                        <div className={`text-5xl font-light ${stat.color} drop-shadow-[0_0_10px_rgba(255,255,255,0.1)]`}>
+                        <div className={`text-4xl font-light ${stat.color} drop-shadow-[0_0_10px_rgba(255,255,255,0.1)]`}>
                           {stat.value}
                         </div>
                         <div>
                           <h3 className="text-[#CDB7D9]/60 uppercase text-xs font-normal tracking-widest mb-1">{stat.label}</h3>
                           <div className="h-1 w-12 bg-gradient-to-r from-[#CDB7D9]/50 to-transparent rounded-full"></div>
                         </div>
-                        <FontAwesomeIcon icon={stat.icon} className="absolute right-4 top-1/2 -translate-y-1/2 text-6xl text-white/5" />
                       </div>
                     </div>
                   ))}
                 </div>
 
                 <div className="grid lg:grid-cols-3 gap-12">
-
+                  {/* Top Clubs & Pie Chart Same as Before */}
                   <div className="lg:col-span-2 space-y-6">
                     <h3 className="text-2xl font-abril text-white flex items-center gap-3">
                       <span className="w-2 h-2 rounded-full bg-pink-500"></span>
                       Top Performing Clubs
                     </h3>
-
                     <div className="h-[400px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-[#CDB7D9]/20 scrollbar-track-transparent space-y-3">
                       {getTopClubsData().map((club, index) => (
                         <div key={index} className="flex items-center gap-4 p-4 bg-[#B7C9D9]/5 backdrop-blur-sm border border-[#CDB7D9]/10 rounded-2xl hover:bg-[#CDB7D9]/10 transition-all group">
@@ -324,14 +509,12 @@ export default function AdminDashboard() {
                             }`}>
                             {index + 1}
                           </div>
-
                           <div className="flex-1 min-w-0">
                             <h4 className="text-white font-medium text-lg truncate">{club.name}</h4>
                             <p className="text-[#CDB7D9]/50 text-xs uppercase tracking-wide truncate">
                               Coordinator: <span className="text-[#CDB7D9]/70">{club.coordinator}</span>
                             </p>
                           </div>
-
                           <div className="text-right">
                             <p className="text-2xl text-white font-mono">{club.count}</p>
                             <p className="text-[10px] text-[#CDB7D9]/40 uppercase tracking-widest">Regs</p>
@@ -340,7 +523,6 @@ export default function AdminDashboard() {
                       ))}
                     </div>
                   </div>
-
                   <div>
                     <h3 className="text-2xl font-abril text-white mb-6 flex items-center gap-3">
                       <span className="w-2 h-2 rounded-full bg-purple-500"></span>
@@ -361,20 +543,7 @@ export default function AdminDashboard() {
                             ))}
                           </Pie>
                           <RechartsTooltip content={<CustomTooltip />} />
-                          <Legend
-                            verticalAlign="bottom"
-                            height={36}
-                            content={({ payload }) => (
-                              <ul className="flex flex-wrap justify-center gap-4 mt-4">
-                                {payload.map((entry, index) => (
-                                  <li key={`item-${index}`} className="flex items-center gap-2 text-xs text-[#CDB7D9]/70">
-                                    <span style={{ backgroundColor: entry.color }} className="w-2 h-2 rounded-full"></span>
-                                    {entry.value}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          />
+                          <Legend verticalAlign="bottom" height={36} />
                         </PieChart>
                       </ResponsiveContainer>
                       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
@@ -384,6 +553,270 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'reviews' && (
+              <motion.div
+                key="reviews"
+                initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+                className="space-y-6"
+              >
+                {!selectedReview ? (
+                  <div className="bg-[#B7C9D9]/5 backdrop-blur-md border border-[#CDB7D9]/10 rounded-3xl overflow-hidden shadow-2xl p-6">
+                    {pendingReviews.length === 0 ? (
+                      <div className="text-center py-20 text-[#CDB7D9]/50">No pending reviews.</div>
+                    ) : (
+                      <div className="grid gap-4">
+                        {pendingReviews.map(review => (
+                          <div key={review.$id} className="p-6 bg-[#000]/20 rounded-xl border border-[#CDB7D9]/10 flex justify-between items-center group hover:border-[#CDB7D9]/30 transition-all">
+                            <div>
+                              <h4 className="text-white text-lg font-medium mb-1">Update Request: {review.eventName}</h4>
+                              <p className="text-[#CDB7D9]/50 text-sm">Requested by: {review.coordinatorName} (Club ID: {review.clubId})</p>
+                            </div>
+                            <button
+                              onClick={() => setSelectedReview(review)}
+                              className="px-6 py-2 bg-[#CDB7D9]/10 hover:bg-[#CDB7D9] hover:text-[#280338] text-[#CDB7D9] rounded-lg transition-all font-medium flex items-center gap-2"
+                            >
+                              <FontAwesomeIcon icon={faEye} /> Review
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <button onClick={() => setSelectedReview(null)} className="flex items-center gap-2 text-[#CDB7D9]/70 hover:text-[#CDB7D9] mb-4">
+                      <FontAwesomeIcon icon={faChevronLeft} /> Back to Reviews
+                    </button>
+
+                    <div className="grid md:grid-cols-2 gap-8">
+                      {/* Original Event Not Shown here for brevity, usually you'd fetch it to compare. 
+                                 For now showing Proposed Changes */}
+                      <div className="bg-[#B7C9D9]/5 p-8 rounded-3xl border border-[#CDB7D9]/10">
+                        <h3 className="text-xl text-white mb-6 border-b border-[#CDB7D9]/10 pb-4">Proposed Changes</h3>
+                        {(() => {
+                          const changes = JSON.parse(selectedReview.proposedChanges);
+                          return (
+                            <div className="space-y-4 text-sm">
+                              <div><span className="text-[#CDB7D9]/50 block">Name</span> <span className="text-white text-lg">{changes.name}</span></div>
+                              <div><span className="text-[#CDB7D9]/50 block">Fee</span> <span className="text-white">₹{changes.registrationFee}</span></div>
+                              <div><span className="text-[#CDB7D9]/50 block">Method</span> <span className="text-white capitalize">{changes.registrationMethod}</span></div>
+                              <div><span className="text-[#CDB7D9]/50 block">Poster</span> <a href={changes.poster} target="_blank" className="text-pink-400 hover:underline truncate block">{changes.poster}</a></div>
+                            </div>
+                          )
+                        })()}
+                      </div>
+
+                      <div className="flex flex-col justify-center gap-4">
+                        <button
+                          onClick={() => handleApproveReview(selectedReview)}
+                          className="w-full py-4 bg-green-500/20 text-green-400 border border-green-500/30 rounded-xl hover:bg-green-500 hover:text-white transition-all font-bold text-lg flex items-center justify-center gap-3"
+                        >
+                          <FontAwesomeIcon icon={faCheck} /> Approve Changes
+                        </button>
+                        <button
+                          onClick={() => handleRejectReview(selectedReview.$id)}
+                          className="w-full py-4 bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl hover:bg-red-500 hover:text-white transition-all font-bold text-lg flex items-center justify-center gap-3"
+                        >
+                          <FontAwesomeIcon icon={faTimes} /> Reject Request
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {activeTab === 'events' && (
+              <motion.div
+                key="events"
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              >
+                {!showAddEvent ? (
+                  <>
+                    <div className="flex justify-between items-center mb-6">
+                      <select
+                        value={eventClubFilter}
+                        onChange={(e) => setEventClubFilter(e.target.value)}
+                        className="px-6 py-2 bg-[#000]/20 text-[#CDB7D9] rounded-xl border border-[#CDB7D9]/20 outline-none"
+                      >
+                        <option value="all">All Clubs</option>
+                        {clubs.map(c => <option key={c.$id} value={c.name}>{c.name}</option>)}
+                      </select>
+                      <button
+                        onClick={() => setShowAddEvent(true)}
+                        className="px-6 py-2 bg-[#CDB7D9] text-[#280338] rounded-xl font-bold flex items-center gap-2 hover:-translate-y-1 transition-all"
+                      >
+                        <FontAwesomeIcon icon={faPlus} /> Create Event
+                      </button>
+                    </div>
+
+                    <div className="bg-[#B7C9D9]/5 backdrop-blur-md border border-[#CDB7D9]/10 rounded-3xl overflow-hidden shadow-2xl">
+                      <table className="w-full text-[#CDB7D9] text-left border-collapse">
+                        <thead className="bg-[#CDB7D9]/5 text-[#CDB7D9]/50 uppercase text-xs font-normal tracking-widest leading-loose">
+                          <tr>
+                            <th className="px-8 py-6">Event Name</th>
+                            <th className="px-8 py-6">Club</th>
+                            <th className="px-8 py-6 text-center">Registrations</th>
+                            <th className="px-8 py-6 text-right">Fee</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#CDB7D9]/5">
+                          {filteredEvents.map(event => {
+                            const clubName = clubs.find(c => c.$id === event.clubId)?.name || 'Unknown';
+                            const regCount = registrations.filter(r => r.eventId === event.$id).length;
+                            return (
+                              <tr key={event.$id} className="hover:bg-[#CDB7D9]/5 transition-colors">
+                                <td className="px-8 py-5 text-white font-medium text-lg">{event.name}</td>
+                                <td className="px-8 py-5">{clubName}</td>
+                                <td className="px-8 py-5 text-center font-mono">{regCount}</td>
+                                <td className="px-8 py-5 text-right font-mono text-white">₹{event.registrationFee}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                      {filteredEvents.length === 0 && <div className="text-center py-10 text-[#CDB7D9]/50">No events found.</div>}
+                    </div>
+                  </>
+                ) : (
+                  <div className="max-w-4xl mx-auto">
+                    <button onClick={() => setShowAddEvent(false)} className="flex items-center gap-2 text-[#CDB7D9]/70 hover:text-[#CDB7D9] mb-4">
+                      <FontAwesomeIcon icon={faChevronLeft} /> Back to Events
+                    </button>
+                    <div className="bg-[#B7C9D9]/5 backdrop-blur-xl border border-[#CDB7D9]/20 rounded-3xl p-8">
+                      <h3 className="text-2xl text-white font-abril mb-6">Create New Event</h3>
+                      <form onSubmit={handleCreateEvent} className="space-y-6">
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div className="group">
+                            <label className="block text-[#CDB7D9]/70 text-xs uppercase tracking-wider mb-2">Club</label>
+                            <select
+                              required
+                              value={newEvent.clubId}
+                              onChange={(e) => setNewEvent({ ...newEvent, clubId: e.target.value })}
+                              className="w-full px-6 py-4 bg-[#000]/20 border border-[#CDB7D9]/20 text-white rounded-2xl focus:border-[#CDB7D9] outline-none"
+                            >
+                              <option value="" className="bg-[#1A0B2E]">Select Club</option>
+                              {clubs.map(c => <option key={c.$id} value={c.$id} className="bg-[#1A0B2E]">{c.name}</option>)}
+                            </select>
+                          </div>
+                          <div className="group">
+                            <label className="block text-[#CDB7D9]/70 text-xs uppercase tracking-wider mb-2">Event Name</label>
+                            <input
+                              type="text" required
+                              value={newEvent.eventName}
+                              onChange={(e) => setNewEvent({ ...newEvent, eventName: e.target.value })}
+                              className="w-full px-6 py-4 bg-[#000]/20 border border-[#CDB7D9]/20 text-white rounded-2xl focus:border-[#CDB7D9] outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div className="group">
+                            <label className="block text-[#CDB7D9]/70 text-xs uppercase tracking-wider mb-2">Poster</label>
+                            <div className="space-y-2">
+                              <div className="relative">
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={handlePosterSelect}
+                                  className="hidden"
+                                  id="poster-upload"
+                                />
+                                <label htmlFor="poster-upload" className="flex items-center justify-center w-full px-4 py-4 bg-[#000]/20 border border-dashed border-[#CDB7D9]/30 rounded-2xl cursor-pointer hover:bg-[#CDB7D9]/5 transition-all text-[#CDB7D9]/70 gap-2">
+                                  {isSubmittingEvent ? <FontAwesomeIcon icon={faSpinner} spin /> : <FontAwesomeIcon icon={faUpload} />}
+                                  <span>{newEvent.posterPreview ? 'Change Poster' : 'Click to Upload'}</span>
+                                </label>
+                              </div>
+                              {newEvent.posterPreview ? (
+                                <div className="relative mt-2 rounded-xl overflow-hidden border border-[#CDB7D9]/20 h-32 w-full">
+                                  <img src={newEvent.posterPreview} alt="Preview" className="w-full h-full object-cover" />
+                                </div>
+                              ) : (
+                                <input
+                                  type="url"
+                                  placeholder="Or paste URL"
+                                  value={newEvent.posterUrl}
+                                  onChange={(e) => setNewEvent({ ...newEvent, posterUrl: e.target.value })}
+                                  className="w-full px-4 py-2 bg-[#000]/20 border border-[#CDB7D9]/20 text-white rounded-xl focus:border-[#CDB7D9] outline-none text-sm"
+                                />
+                              )}
+                            </div>
+                          </div>
+                          <div className="group">
+                            <label className="block text-[#CDB7D9]/70 text-xs uppercase tracking-wider mb-2">Registration Fee</label>
+                            <input
+                              type="number" min="0"
+                              value={newEvent.registrationFee}
+                              onChange={(e) => setNewEvent({ ...newEvent, registrationFee: e.target.value })}
+                              className="w-full px-6 py-4 bg-[#000]/20 border border-[#CDB7D9]/20 text-white rounded-2xl focus:border-[#CDB7D9] outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="group">
+                          <label className="block text-[#CDB7D9]/70 text-xs uppercase tracking-wider mb-2">Registration Method</label>
+                          <select
+                            value={newEvent.registrationMethod}
+                            onChange={(e) => setNewEvent({ ...newEvent, registrationMethod: e.target.value })}
+                            className="w-full px-6 py-4 bg-[#000]/20 border border-[#CDB7D9]/20 text-white rounded-2xl focus:border-[#CDB7D9] outline-none"
+                          >
+                            <option value="internal" className="bg-[#1A0B2E]">Internal Form</option>
+                            <option value="external" className="bg-[#1A0B2E]">External Link</option>
+                          </select>
+                        </div>
+
+                        {newEvent.registrationMethod === 'external' ? (
+                          <div className="group">
+                            <label className="block text-[#CDB7D9]/70 text-xs uppercase tracking-wider mb-2">Registration Link</label>
+                            <input
+                              type="url" required
+                              value={newEvent.registrationLink}
+                              onChange={(e) => setNewEvent({ ...newEvent, registrationLink: e.target.value })}
+                              className="w-full px-6 py-4 bg-[#000]/20 border border-[#CDB7D9]/20 text-white rounded-2xl focus:border-[#CDB7D9] outline-none"
+                            />
+                          </div>
+                        ) : (
+                          <div className="p-6 bg-[#000]/20 rounded-2xl border border-[#CDB7D9]/10">
+                            <div className="flex justify-between items-center mb-4">
+                              <h4 className="text-white font-medium">Form Fields</h4>
+                              <button type="button" onClick={addFormField} className="text-xs bg-[#CDB7D9]/10 hover:bg-[#CDB7D9] hover:text-[#280338] px-3 py-1 rounded-lg transition-colors text-[#CDB7D9]">Add Field</button>
+                            </div>
+                            <div className="space-y-3">
+                              {formFields.map((field, idx) => (
+                                <div key={idx} className="flex gap-2">
+                                  <input
+                                    placeholder="Label"
+                                    value={field.label}
+                                    onChange={(e) => updateFormField(idx, 'label', e.target.value)}
+                                    className="flex-1 px-4 py-2 bg-[#1A0B2E] border border-[#CDB7D9]/20 rounded-xl text-sm"
+                                  />
+                                  <select
+                                    value={field.type}
+                                    onChange={(e) => updateFormField(idx, 'type', e.target.type)}
+                                    className="px-4 py-2 bg-[#1A0B2E] border border-[#CDB7D9]/20 rounded-xl text-sm"
+                                  >
+                                    <option value="text">Text</option>
+                                    <option value="number">Number</option>
+                                    <option value="email">Email</option>
+                                  </select>
+                                  <button type="button" onClick={() => removeFormField(idx)} className="text-red-400 hover:text-red-300 px-2"><FontAwesomeIcon icon={faTimes} /></button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <button disabled={isSubmittingEvent} type="submit" className="w-full py-4 bg-[#CDB7D9] text-[#280338] font-bold rounded-2xl hover:shadow-[0_0_20px_rgba(205,183,217,0.3)] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                          {isSubmittingEvent ? <FontAwesomeIcon icon={faSpinner} spin className="mr-2" /> : null}
+                          {isSubmittingEvent ? 'Creating...' : 'Create Event'}
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                )}
               </motion.div>
             )}
 
@@ -425,8 +858,12 @@ export default function AdminDashboard() {
                         .map((club) => (
                           <div key={club.$id} className="group relative overflow-hidden bg-[#B7C9D9]/5 backdrop-blur-md border border-[#CDB7D9]/10 rounded-2xl p-6 hover:bg-[#CDB7D9]/10 transition-all flex items-center justify-between">
                             <div className="flex items-center gap-6">
-                              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[#CDB7D9]/10 to-[#1A0B2E]/50 flex items-center justify-center border border-[#CDB7D9]/20 group-hover:scale-105 transition-transform">
-                                <FontAwesomeIcon icon={faBuilding} className="text-2xl text-[#CDB7D9]" />
+                              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[#CDB7D9]/10 to-[#1A0B2E]/50 flex items-center justify-center border border-[#CDB7D9]/20 group-hover:scale-105 transition-transform overflow-hidden relative">
+                                {club.logo ? (
+                                  <img src={club.logo} alt={club.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <FontAwesomeIcon icon={faBuilding} className="text-2xl text-[#CDB7D9]" />
+                                )}
                               </div>
 
                               <div>
@@ -450,9 +887,6 @@ export default function AdminDashboard() {
                                 <p className="text-xl font-mono text-white">{club.events?.length || 0}</p>
                                 <p className="text-[10px] text-[#CDB7D9]/40 uppercase tracking-widest">Events</p>
                               </div>
-                              <div className="w-10 h-10 rounded-full border border-[#CDB7D9]/20 flex items-center justify-center text-[#CDB7D9]/40 group-hover:bg-[#CDB7D9] group-hover:text-[#280338] transition-all cursor-pointer">
-                                <FontAwesomeIcon icon={faChevronRight} />
-                              </div>
                             </div>
                           </div>
                         ))}
@@ -470,19 +904,25 @@ export default function AdminDashboard() {
                     <div className="grid lg:grid-cols-5 gap-8">
                       <div className="lg:col-span-2 order-first lg:order-last">
                         <div className="bg-[#B7C9D9]/5 backdrop-blur-xl border border-[#CDB7D9]/20 rounded-3xl p-8 h-full min-h-[400px] flex flex-col items-center justify-center text-center relative overflow-hidden group hover:border-[#CDB7D9]/40 transition-colors cursor-pointer border-dashed">
-                          <div className="w-24 h-24 rounded-full bg-[#CDB7D9]/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500">
-                            <FontAwesomeIcon icon={faPlus} className="text-3xl text-[#CDB7D9]/50 group-hover:text-[#CDB7D9]" />
-                          </div>
-                          <h4 className="text-xl text-white mb-2">Club Logo</h4>
-                          <p className="text-[#CDB7D9]/50 text-sm max-w-[200px]">Drag and drop club logo here or click to browse</p>
-
+                          <label className="cursor-pointer inset-0 absolute flex flex-col items-center justify-center">
+                            <input type="file" accept="image/*" className="hidden" onChange={handleLogoSelect} />
+                            {newClub.logoPreview ? (
+                              <img src={newClub.logoPreview} className="w-full h-full object-cover" />
+                            ) : (
+                              <>
+                                <div className="w-24 h-24 rounded-full bg-[#CDB7D9]/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500">
+                                  <FontAwesomeIcon icon={faPlus} className="text-3xl text-[#CDB7D9]/50 group-hover:text-[#CDB7D9]" />
+                                </div>
+                                <h4 className="text-xl text-white mb-2">Club Logo</h4>
+                                <p className="text-[#CDB7D9]/50 text-sm max-w-[200px]">Click to upload club logo</p>
+                              </>
+                            )}
+                          </label>
                           <div className="absolute inset-0 bg-gradient-to-t from-[#CDB7D9]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-
                         </div>
                       </div>
 
                       <form onSubmit={handleAddClub} className="lg:col-span-3 relative">
-
                         <h3 className="text-3xl font-abril text-white mb-8">New Club Details</h3>
                         <div className="space-y-6">
                           <div className="relative group">
@@ -526,8 +966,9 @@ export default function AdminDashboard() {
                             </label>
                           </div>
 
-                          <button type="submit" className="w-full py-4 bg-[#CDB7D9] text-[#280338] font-bold rounded-2xl hover:shadow-[0_0_20px_rgba(205,183,217,0.3)] hover:-translate-y-0.5 transition-all">
-                            Add Club
+                          <button disabled={isSubmittingClub} type="submit" className="w-full py-4 bg-[#CDB7D9] text-[#280338] font-bold rounded-2xl hover:shadow-[0_0_20px_rgba(205,183,217,0.3)] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                            {isSubmittingClub ? <FontAwesomeIcon icon={faSpinner} spin className="mr-2" /> : null}
+                            {isSubmittingClub ? 'Adding...' : 'Add Club'}
                           </button>
                         </div>
                       </form>
@@ -647,7 +1088,7 @@ export default function AdminDashboard() {
                       <div key={event.$id} className="bg-[#B7C9D9]/5 backdrop-blur-md border border-[#CDB7D9]/10 rounded-2xl p-6 flex justify-between items-center hover:border-[#CDB7D9]/30 hover:bg-[#B7C9D9]/10 transition-all">
                         <div className="flex items-center gap-6">
                           <div className="w-12 h-12 rounded-xl bg-[#CDB7D9]/10 flex items-center justify-center text-[#CDB7D9]">
-                            <FontAwesomeIcon icon={faTrophy} />
+                            {event.poster ? <img src={event.poster} className="w-full h-full object-cover rounded-xl" /> : <FontAwesomeIcon icon={faTrophy} />}
                           </div>
                           <div>
                             <h3 className="text-xl font-medium text-white">{event.name}</h3>
