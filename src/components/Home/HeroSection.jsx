@@ -26,8 +26,8 @@ const HeroSection = () => {
                 <div className="relative z-10 w-full h-full flex flex-col items-center justify-end pb-0">
                     <div className="absolute top-37.5 sm:top-[35%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] sm:w-full max-w-4xl px-4 z-20">
                         <img
-                            src="/AdvityaTitle.png"
-                            alt="AdVITya 2024"
+                            src="/Advitya3d.png"
+                            alt="AdVITya 2026"
                             className="w-full h-auto drop-shadow-2xl"
                         />
                     </div>

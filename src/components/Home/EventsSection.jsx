@@ -11,18 +11,18 @@ const EventsSection = () => {
 
     const events = [
         {
-            image: "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800",
-            title: "Night Beats",
-            club: "Musicians Club",
-            date: "12 Feb 2026",
-            venue: "Open Air Theatre",
+            image: "https://fra.cloud.appwrite.io/v1/storage/buckets/696f8e35003b8cc96b50/files/696f8eb7002efdc16a5d/view?project=695eb843003ae5a0552b&mode=admin?w=800",
+            title: "Bike Stunt Show",
+            club: "Student Welfare office",
+            date: "T.B.A.",
+            venue: "T.B.A.",
         },
         {
-            image: "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=800",
-            title: "Echoes",
-            club: "Rhythm Society",
-            date: "18 Feb 2026",
-            venue: "Main Auditorium",
+            image: "https://fra.cloud.appwrite.io/v1/storage/buckets/696f8e35003b8cc96b50/files/696f9069000c4f7a027e/view?project=695eb843003ae5a0552b&mode=admin?w=800",
+            title: "Live Caricatures",
+            club: "Student Welfare office",
+            date: "T.B.A.",
+            venue: "T.B.A.",
         },
         {
             image: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800",

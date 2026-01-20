@@ -1,12 +1,15 @@
+'use client';
+
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useUI } from '@/contexts/UIContext';
 import LoginForm from './LoginForm';
 
 function Header() {
     const [scrolled, setScrolled] = useState(false);
     const location = useLocation();
+    const navigate = useNavigate();
 
     useEffect(() => {
         const handleScroll = () => {
@@ -20,8 +23,9 @@ function Header() {
     const navItems = [
         { name: 'Home', path: '/' },
         { name: 'Events', path: '/events' },
-        { name: 'Sponsors', path: '/sponsors' },
-        { name: 'About Us', path: '/about' }
+        { name: 'Sports Fest', path: '/sportfest' },
+        { name: 'Sponsors', path: '/sponsor' },
+        { name: 'About Us', path: '/team' }
     ];
 
     const { isHeaderOpen, openHeader, closeHeader, headerMode, setHeaderMode } = useUI();
@@ -129,7 +133,10 @@ function Header() {
 
                         {headerMode === 'login' ? (
                             <div className="relative z-10 w-full h-full flex items-center justify-center p-4">
-                                <LoginForm onSuccess={closeHeader} />
+                                <LoginForm onSuccess={() => {
+                                    closeHeader();
+                                    navigate('/dashboard');
+                                }} />
                             </div>
                         ) : (
                             <>
@@ -220,16 +227,16 @@ function Header() {
                                                 <a href="mailto:advitya@vitbhopal.ac.in" className="text-[#CDB7D9] hover:text-white transition-colors text-sm tracking-wider uppercase font-semibold">Email Us</a>
 
                                                 <div className="flex items-center gap-3 mt-2">
-                                                    <a href="#" className="text-[#CDB7D9] hover:text-white transition-colors uppercase tracking-widest font-medium text-sm">
+                                                    <a href="https://www.youtube.com/@VITBHOPALOfficial" className="text-[#CDB7D9] hover:text-white transition-colors uppercase tracking-widest font-medium text-sm" target="_blank" rel="noopener noreferrer">
                                                         YOUTUBE
                                                     </a>
-                                                    <a href="#" className="text-[#CDB7D9] hover:text-white transition-colors uppercase tracking-widest font-medium text-sm">
+                                                    <a href="https://www.instagram.com/vit.bhopal/?hl=en" className="text-[#CDB7D9] hover:text-white transition-colors uppercase tracking-widest font-medium text-sm">
                                                         INSTAGRAM
                                                     </a>
-                                                    <a href="#" className="text-[#CDB7D9] hover:text-white transition-colors uppercase tracking-widest font-medium text-sm">
+                                                    <a href="https://www.linkedin.com/school/vit-bhopal-university/posts/?feedView=all" className="text-[#CDB7D9] hover:text-white transition-colors uppercase tracking-widest font-medium text-sm">
                                                         LINKEDIN
                                                     </a>
-                                                    <a href="#" className="text-[#CDB7D9] hover:text-white transition-colors uppercase tracking-widest font-medium text-sm">
+                                                    <a href="https://www.facebook.com/VITUnivBhopal/" className="text-[#CDB7D9] hover:text-white transition-colors uppercase tracking-widest font-medium text-sm">
                                                         FACEBOOK
                                                     </a>
                                                 </div>

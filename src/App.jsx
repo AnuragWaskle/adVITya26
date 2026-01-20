@@ -8,6 +8,7 @@ import Register from './components/Events/RegisterPage';
 import Dashboard from './pages/Dashboard';
 import Team from './pages/Team';
 import Sponsor from './pages/Sponsor';
+import Sportfest from './pages/Sportfest';
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/team" element={<Team />} />
             <Route path="/sponsor" element={<Sponsor />} />
+            <Route path="/sportfest" element={<Sportfest />} />
           </Routes>
         </main>
         <Footer />
