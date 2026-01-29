@@ -23,7 +23,7 @@ const HeaderSpacer = ({ onHeightChange }) => {
 
   return (
     <div
-      className="fixed left-0 right-0 top-0 z-40 pointer-events-none bg-[#0F041C]"
+      className="fixed left-0 right-0 top-0 z-40 pointer-events-none"
       style={{ height }}
       aria-hidden
     />
@@ -32,45 +32,46 @@ const HeaderSpacer = ({ onHeightChange }) => {
 
 const SportCard = ({ sport, onReadMore }) => {
   return (
-    <div className="bg-[#1A0A28] rounded-2xl p-4 border border-white/10 shadow-lg hover:border-purple-500/50 transition-all duration-300">
-      <div className="rounded-xl overflow-hidden mb-4 h-48 bg-white/5">
+    <div className="bg-[#1A0A28] rounded-4xl p-2 border border-white/10 shadow-lg hover:border-purple-500/50 transition-all duration-300">
+      <div className="rounded-2xl overflow-hidden mb-4 h-48 bg-white/5">
         <img
           src={sport.image}
           alt={sport.name}
           className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
         />
       </div>
+      <div className="p-5">
+        <h3 className="text-lg font-semibold text-white mb-1">
+          {sport.name}
+        </h3>
 
-      <h3 className="text-lg font-semibold text-white mb-1">
-        {sport.name}
-      </h3>
+        <p className="text-xs text-purple-300 mb-2 capitalize">
+          Sports Event
+        </p>
 
-      <p className="text-xs text-purple-300 mb-2 capitalize">
-        Sports Event
-      </p>
+        <p className="text-xs text-gray-400 mb-1">
+          <span className="font-semibold">Format:</span>{' '}
+          {sport.details[0].replace('Format: ', '')}
+        </p>
 
-      <p className="text-xs text-gray-400 mb-1">
-        <span className="font-semibold">Format:</span>{' '}
-        {sport.details[0].replace('Format: ', '')}
-      </p>
+        <p className="text-xs text-gray-400 mb-1">
+          <span className="font-semibold">Venue:</span>{' '}
+          Sports Complex
+        </p>
 
-      <p className="text-xs text-gray-400 mb-1">
-        <span className="font-semibold">Venue:</span>{' '}
-        Sports Complex
-      </p>
+        <p className="text-xs text-gray-400 mb-3">
+          <span className="font-semibold">Date:</span>{' '}
+          21 Feb 2025 • <span className="font-semibold">Time:</span>{' '}
+          10:00 AM
+        </p>
 
-      <p className="text-xs text-gray-400 mb-3">
-        <span className="font-semibold">Date:</span>{' '}
-        21 Feb 2025 • <span className="font-semibold">Time:</span>{' '}
-        10:00 AM
-      </p>
-
-      <button
-        onClick={() => onReadMore(sport)}
-        className="w-full bg-purple-400/80 hover:bg-purple-400 transition text-black font-semibold py-3 rounded-xl"
-      >
-        Read More
-      </button>
+        <button
+          onClick={() => onReadMore(sport)}
+          className="w-full bg-purple-400/80 hover:bg-purple-400 transition text-black font-semibold py-3 rounded-xl"
+        >
+          Read More
+        </button>
+      </div>
     </div>
   );
 };
@@ -371,12 +372,22 @@ function Sportfest() {
   };
 
   return (
-    <>
+    <div
+      className="min-h-screen"
+      style={{
+        backgroundImage: 'url(/SportsFestBG.svg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backgroundAttachment: 'fixed',
+        backgroundColor: '#0F041C'
+      }}
+    >
       <Header />
       <HeaderSpacer onHeightChange={setTopOffset} />
 
       <main
-        className="fixed inset-x-0 bottom-0 bg-[#0F041C] text-white overflow-x-hidden items-center"
+        className="fixed inset-x-0 bottom-0 text-white overflow-x-hidden items-center"
         style={{ top: topOffset }}
       >
         {isMobile && isFilterOpen && (
@@ -389,7 +400,7 @@ function Sportfest() {
         <div className="h-full px-4 sm:px-6 lg:px-8 pt-4 grid grid-cols-12 gap-6 overflow-y-auto overflow-x-hidden">
           <aside
             className={`
-                            z-40 bg-[#0F041C] rounded-2xl py-4
+                            z-40 rounded-2xl py-4
                             transition-transform duration-300 ease-in-out
                             ${isMobile
                 ? `fixed left-0 top-1/2 -translate-y-1/2 w-80 px-6
@@ -553,7 +564,7 @@ function Sportfest() {
           isMobile={isMobile}
         />
       )}
-    </>
+    </div>
   );
 }
 
