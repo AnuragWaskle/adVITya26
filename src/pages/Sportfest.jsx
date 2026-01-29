@@ -387,8 +387,8 @@ function Sportfest() {
       <HeaderSpacer onHeightChange={setTopOffset} />
 
       <main
-        className="fixed inset-x-0 bottom-0 text-white overflow-x-hidden items-center"
-        style={{ top: topOffset }}
+        className="relative min-h-screen text-white overflow-x-hidden"
+        style={{ paddingTop: topOffset + 16 }}
       >
         {isMobile && isFilterOpen && (
           <div
@@ -397,7 +397,7 @@ function Sportfest() {
           />
         )}
 
-        <div className="h-full px-4 sm:px-6 lg:px-8 pt-4 grid grid-cols-12 gap-6 overflow-y-auto overflow-x-hidden">
+        <div className="px-4 sm:px-6 lg:px-8 grid grid-cols-12 gap-6">
           <aside
             className={`
                             z-40 rounded-2xl py-4
@@ -406,7 +406,7 @@ function Sportfest() {
                 ? `fixed left-0 top-1/2 -translate-y-1/2 w-80 px-6
                                 max-h-[85vh] overflow-y-auto
                                 ${isFilterOpen ? 'translate-x-0' : '-translate-x-full'}`
-                : 'col-span-12 lg:col-span-4 sticky top-10 self-start'}
+                : 'col-span-12 lg:col-span-4 lg:sticky lg:top-24 self-start'}
                         `}
           >
             <div className='flex flex-col items-center'>
@@ -534,7 +534,7 @@ function Sportfest() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 p-25 pb-8">
               {loading
                 ? Array.from({ length: 6 }).map((_, i) => (
                   <SportSkeleton key={i} />
