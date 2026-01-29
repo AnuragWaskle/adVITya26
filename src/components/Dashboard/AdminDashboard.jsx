@@ -78,6 +78,11 @@ export default function AdminDashboard() {
   // Review Modal State
   const [selectedReview, setSelectedReview] = useState(null);
 
+  // Rejection Modal State
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [reviewToReject, setReviewToReject] = useState(null);
+
   const DATABASE_ID = import.meta.env.VITE_APPWRITE_DATABASE_ID;
   const CLUBS_COLLECTION_ID = import.meta.env.VITE_APPWRITE_CLUBS_COLLECTION_ID;
   const USERS_COLLECTION_ID = import.meta.env.VITE_APPWRITE_USERS_COLLECTION_ID;
@@ -94,7 +99,7 @@ export default function AdminDashboard() {
         databases.listDocuments(DATABASE_ID, USERS_COLLECTION_ID, [Query.limit(100)]),
         databases.listDocuments(DATABASE_ID, REGISTRATIONS_COLLECTION_ID, [Query.limit(1000)]),
         databases.listDocuments(DATABASE_ID, EVENTS_COLLECTION_ID, [Query.limit(100)]),
-        databases.listDocuments(DATABASE_ID, PENDING_EVENTS_COLLECTION_ID, [Query.limit(100)])
+        databases.listDocuments(DATABASE_ID, PENDING_EVENTS_COLLECTION_ID, [Query.limit(100), Query.equal('status', 'pending')])
       ]);
 
       let eventsData = eventsRes.documents.map(event => {
@@ -244,7 +249,7 @@ export default function AdminDashboard() {
       })
     } finally {
       setLoadingText("");
-    setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -271,7 +276,7 @@ export default function AdminDashboard() {
         type: 'error',
         message: 'Error Assigning Club!',
       });
-    } finally{
+    } finally {
       setLoadingText("");
       setLoading(false);
     }
@@ -403,7 +408,7 @@ export default function AdminDashboard() {
           {
             name: changes.name,
             poster: changes.poster,
-            eventType:changes.eventType,
+            eventType: changes.eventType,
             venue: changes.venue,
             date: changes.date,
             time: changes.time,
@@ -426,7 +431,7 @@ export default function AdminDashboard() {
             clubId: review.clubId,
             name: changes.name,
             poster: changes.poster,
-            eventType:changes.eventType,
+            eventType: changes.eventType,
             venue: changes.venue,
             date: changes.date,
             time: changes.time,
@@ -470,18 +475,42 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleRejectReview = async (reviewId) => {
-    if (!confirm("Are you sure you want to reject and delete this request?")) return;
+  // Rejection Modal Logic
+  const openRejectModal = (reviewId) => {
+    setReviewToReject(reviewId);
+    setRejectionReason('');
+    setShowRejectModal(true);
+  }
+
+  const handleConfirmReject = async () => {
+    if (!rejectionReason.trim()) {
+      addNotification({
+        id: Date.now(),
+        type: 'warning',
+        message: 'Please enter a reason!',
+      });
+      return;
+    }
+
     setLoadingText("Rejecting...");
     setLoading(true);
     try {
-      await databases.deleteDocument(DATABASE_ID, PENDING_EVENTS_COLLECTION_ID, reviewId);
+      await databases.updateDocument(
+        DATABASE_ID,
+        PENDING_EVENTS_COLLECTION_ID,
+        reviewToReject,
+        {
+          status: 'rejected',
+          rejectionReason: rejectionReason
+        }
+      );
       addNotification({
         id: Date.now(),
         type: 'success',
-        message: 'Request Rejected!',
+        message: 'Request Rejected & Coordinator Notified!',
       });
       setSelectedReview(null);
+      setShowRejectModal(false);
       fetchData();
     } catch (error) {
       console.error("Error rejecting review:", error);
@@ -494,6 +523,10 @@ export default function AdminDashboard() {
       setLoadingText("");
       setLoading(false);
     }
+  };
+
+  const handleRejectReview = (reviewId) => {
+    openRejectModal(reviewId);
   };
 
 
@@ -541,7 +574,7 @@ export default function AdminDashboard() {
   };
 
   const handleRemoveFee = (index) => {
-    if (newEvent.registrationFee.length !== 1){
+    if (newEvent.registrationFee.length !== 1) {
       const updatedFees = newEvent.registrationFee.filter((_, i) => i !== index);
       setNewEvent({ ...newEvent, registrationFee: updatedFees });
     }
@@ -1215,12 +1248,12 @@ export default function AdminDashboard() {
                 {!showAddClub ? (
                   <>
                     <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-6">
-                    {/* MOBILE DROPDOWN */}
-                    <div className="w-full md:hidden">
-                      <select
-                        value={clubCategoryFilter}
-                        onChange={(e) => setClubCategoryFilter(e.target.value)}
-                        className="
+                      {/* MOBILE DROPDOWN */}
+                      <div className="w-full md:hidden">
+                        <select
+                          value={clubCategoryFilter}
+                          onChange={(e) => setClubCategoryFilter(e.target.value)}
+                          className="
                           w-full px-4 py-3 rounded-xl
                           bg-[#B7C9D9]/5 backdrop-blur-md
                           border border-[#CDB7D9]/20
@@ -1228,42 +1261,42 @@ export default function AdminDashboard() {
                           focus:outline-none focus:ring-2 focus:ring-[#CDB7D9]/40
                           capitalize
                         "
-                      >
-                        {['all', 'technical', 'non-technical', 'cultural', 'chapter', 'community'].map((filter) => (
-                          <option key={filter} value={filter} className="text-black capitalize">
-                            {filter}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* DESKTOP FILTER BUTTONS */}
-                    <div className="hidden md:flex bg-[#B7C9D9]/5 p-1 rounded-xl backdrop-blur-md border border-[#CDB7D9]/10">
-                      {['all', 'technical', 'non-technical', 'cultural', 'chapter', 'community'].map((filter) => (
-                        <button
-                          key={filter}
-                          onClick={() => setClubCategoryFilter(filter)}
-                          className={`px-6 py-2 rounded-lg text-sm font-medium transition-all capitalize
-                            ${clubCategoryFilter === filter
-                              ? 'bg-[#CDB7D9] text-[#280338] shadow-[0_0_15px_rgba(205,183,217,0.3)]'
-                              : 'text-[#CDB7D9]/60 hover:text-[#CDB7D9]'
-                            }`}
                         >
-                          {filter}
-                        </button>
-                      ))}
-                    </div>
+                          {['all', 'technical', 'non-technical', 'cultural', 'chapter', 'community'].map((filter) => (
+                            <option key={filter} value={filter} className="text-black capitalize">
+                              {filter}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                    {/* CREATE BUTTON */}
-                    <button
-                      onClick={() => setShowAddClub(true)}
-                      className="px-8 py-3 bg-linear-to-r from-[#CDB7D9] to-[#9F87C4]
+                      {/* DESKTOP FILTER BUTTONS */}
+                      <div className="hidden md:flex bg-[#B7C9D9]/5 p-1 rounded-xl backdrop-blur-md border border-[#CDB7D9]/10">
+                        {['all', 'technical', 'non-technical', 'cultural', 'chapter', 'community'].map((filter) => (
+                          <button
+                            key={filter}
+                            onClick={() => setClubCategoryFilter(filter)}
+                            className={`px-6 py-2 rounded-lg text-sm font-medium transition-all capitalize
+                            ${clubCategoryFilter === filter
+                                ? 'bg-[#CDB7D9] text-[#280338] shadow-[0_0_15px_rgba(205,183,217,0.3)]'
+                                : 'text-[#CDB7D9]/60 hover:text-[#CDB7D9]'
+                              }`}
+                          >
+                            {filter}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* CREATE BUTTON */}
+                      <button
+                        onClick={() => setShowAddClub(true)}
+                        className="px-8 py-3 bg-linear-to-r from-[#CDB7D9] to-[#9F87C4]
                         text-[#280338] rounded-full cursor-pointer font-bold
                         flex items-center gap-3 hover:-translate-y-1 transition-transform"
-                    >
-                      <FontAwesomeIcon icon={faPlus} /> Create New
-                    </button>
-                  </div>
+                      >
+                        <FontAwesomeIcon icon={faPlus} /> Create New
+                      </button>
+                    </div>
 
 
                     <div className="grid gap-4">
@@ -1531,6 +1564,49 @@ export default function AdminDashboard() {
           <NotificationItem key={n.id} notification={n} onDismiss={dismissNotification} />
         ))}
       </div>
+
+      {/* Rejection Modal */}
+      <AnimatePresence>
+        {showRejectModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+              className="bg-[#1A0B2E] border border-[#CDB7D9]/20 p-6 rounded-3xl w-full max-w-lg shadow-2xl relative"
+            >
+              <h3 className="text-2xl font-abril text-white mb-2">Reject Request</h3>
+              <p className="text-[#CDB7D9]/60 text-sm mb-6">Please provide a reason for rejecting this event update. This will be visible to the coordinator.</p>
+
+              <div className="space-y-4">
+                <textarea
+                  autoFocus
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  placeholder="Enter rejection reason..."
+                  className="w-full h-32 px-4 py-3 bg-black/20 border border-[#CDB7D9]/20 rounded-xl text-white resize-none focus:border-[#CDB7D9] outline-none"
+                />
+
+                <div className="flex gap-4 pt-2">
+                  <button
+                    onClick={() => setShowRejectModal(false)}
+                    className="flex-1 py-3 rounded-xl border border-[#CDB7D9]/20 text-[#CDB7D9] font-bold hover:bg-[#CDB7D9]/5 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmReject}
+                    className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 transition-all shadow-[0_0_15px_rgba(239,68,68,0.3)]"
+                  >
+                    Confirm Rejection
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
